@@ -1,5 +1,5 @@
 # Dockerfile for standalone usage
-FROM debian:stretch-slim
+FROM debian:stable
 
 RUN apt-get -y update
 
