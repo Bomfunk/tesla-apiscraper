@@ -206,6 +206,13 @@ class StateMonitor(object):
                         "timestamp", "gps_as_of", "left_temp_direction", "right_temp_direction", "charge_port_latch"):
                     old_value = self.old_values[request].get(element, '')
                     new_value = result[element]
+                    if new_value is not None:
+                        if element not in a_ignore:
+                            if element in a_validity_checks and eval(a_validity_checks[element]["eval"]):
+                                logger.debug(
+                                    "VALIDITY CHECK VIOLATED >>> " + element + ":" + a_validity_checks[element][
+                                        "eval"])
+                                new_value = a_validity_checks[element]["set"]
                     if element == "vehicle_name" and not new_value:
                         continue
                     if element == "native_latitude":
@@ -274,7 +281,7 @@ class StateMonitor(object):
                     # We are actively driving, does not matter we are
                     # stopped at a traffic light or whatnot,
                     # keep polling
-                    interval = 1
+                    interval = 16
                     any_change = True
 
         except (HTTPError, URLError) as exc:
@@ -284,8 +291,8 @@ class StateMonitor(object):
             else:
                 return -1  # re-initialize.
 
-        if interval == 0:
-            interval = 1
+        if interval < 16:
+            interval = 16
 
         # If we are charging at a supercharger, it's worth polling frequently
         # since the changes are fast. For regular charging 16 seconds
@@ -304,11 +311,17 @@ class StateMonitor(object):
         # activity we see.
         else:
             if any_change:  # there have been changes, reduce interval
-                if interval > 1:
+                if interval > 16:
                     interval /= 2
             else:  # there haven't been any changes, increase interval to allow the car to fall asleep
                 if interval < 2048:
                     interval *= 2
+
+        # Finally, if sentry mode is enabled, the car won't sleep
+        # anyway, so just set interval to 64.
+        if self.old_values['vehicle_state'].get('sentry_mode', ''):
+            interval = 64
+
         return interval
 
 
@@ -450,6 +463,13 @@ while True:
                 logger.info("Waking the car up for the oneshot request")
                 state_monitor.wake_up()
                 resume = True
+        if command == "sleep":
+            # Allow car to sleep immediately. Wait 17 minutes
+            logger.info("Pausing polling requested to allow the car to sleep.")
+            if req['value'] == "":
+                poll_interval = 1024
+            else:
+                poll_interval = int(req['value'])
 
     if disableScrape is False or car_active_state is not None:
         busy_since = int(time.time())
